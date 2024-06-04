@@ -1,8 +1,7 @@
-import os
-import tempfile
 import streamlit as st
 from pytube import YouTube, Playlist
 from tqdm import tqdm
+import os
 
 def download_video(link, audio_only=False):
     try:
@@ -13,30 +12,29 @@ def download_video(link, audio_only=False):
         else:
             stream = yt.streams.get_highest_resolution()
             st.write(f"Downloading {yt.title}...")
-
-        fd, temp_file_path = tempfile.mkstemp()
-        try:
-            stream.download(output_path=temp_file_path)
-            with open(temp_file_path, 'rb') as temp_file:
-                st.write(f"{yt.title} downloaded successfully.")
-                st.download_button(
-                    label=f"Download {yt.title}",
-                    data=temp_file.read(),
-                    file_name=f"{yt.title}.{'mp3' if audio_only else stream.subtype}",
-                    mime=f"audio/mpeg" if audio_only else stream.mime_type,
-                )
-        finally:
-            os.remove(temp_file_path)
+        output_path = 'downloads'
+        if not os.path.exists(output_path):
+            os.makedirs(output_path)
+        file_path = stream.download(output_path=output_path)
+        st.write(f"{yt.title} downloaded successfully.")
+        return file_path
     except Exception as e:
         st.error(f"An error occurred: {e}")
+        return None
+
 def download_playlist(playlist_url, audio_only=False):
     try:
         playlist = Playlist(playlist_url)
+        downloaded_files = []
         for video_url in tqdm(playlist.video_urls):
-            download_video(video_url, audio_only)
+            file_path = download_video(video_url, audio_only)
+            if file_path:
+                downloaded_files.append(file_path)
         st.write("All videos in the playlist downloaded successfully!")
+        return downloaded_files
     except Exception as e:
         st.error(f"An error occurred: {e}")
+        return []
 
 def main():
     st.title("YouTube Video Downloader")
@@ -49,17 +47,36 @@ def main():
         download_type = st.radio("Download type", ("Video", "Audio Only"))
         if st.button("Download"):
             st.write("Downloading...")
+            downloaded_files = []
             for url in tqdm(urls):
                 if url.strip():
-                    download_video(url, audio_only=(download_type == "Audio Only"))
+                    file_path = download_video(url, audio_only=(download_type == "Audio Only"))
+                    if file_path:
+                        downloaded_files.append(file_path)
             st.write("All downloads completed!")
+            for file_path in downloaded_files:
+                with open(file_path, "rb") as file:
+                    btn = st.download_button(
+                        label=f"Download {os.path.basename(file_path)}",
+                        data=file,
+                        file_name=os.path.basename(file_path),
+                        mime="application/octet-stream"
+                    )
     else:
         st.write("Enter the YouTube playlist URL:")
         playlist_url = st.text_input("Enter Playlist URL")
         download_type = st.radio("Download type", ("Video", "Audio Only"))
         if st.button("Download"):
             st.write("Downloading playlist...")
-            download_playlist(playlist_url, audio_only=(download_type == "Audio Only"))
+            downloaded_files = download_playlist(playlist_url, audio_only=(download_type == "Audio Only"))
+            for file_path in downloaded_files:
+                with open(file_path, "rb") as file:
+                    btn = st.download_button(
+                        label=f"Download {os.path.basename(file_path)}",
+                        data=file,
+                        file_name=os.path.basename(file_path),
+                        mime="application/octet-stream"
+                    )
 
 if __name__ == "__main__":
     main()
