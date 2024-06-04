@@ -2,7 +2,6 @@ import streamlit as st
 from pytube import YouTube, Playlist
 from tqdm import tqdm
 import os
-import zipfile
 
 # Initialize session state if not already initialized
 if 'downloaded_files' not in st.session_state:
@@ -41,13 +40,6 @@ def download_playlist(playlist_url, audio_only=False):
         st.error(f"An error occurred: {e}")
         return []
 
-def create_zip_file(file_paths):
-    zip_file_path = "downloads/videos_download.zip"
-    with zipfile.ZipFile(zip_file_path, 'w') as zipf:
-        for file_path in file_paths:
-            zipf.write(file_path, os.path.basename(file_path))
-    return zip_file_path
-
 def main():
     st.title("YouTube Video Downloader")
     option = st.radio("Select download option", ("Individual Videos", "Playlist"))
@@ -55,28 +47,18 @@ def main():
     if option == "Individual Videos":
         st.write("Enter the YouTube video URLs:")
         urls = st.text_area("Enter URLs (one per line):", height=200)
-        urls = [url.strip() for url in urls.split('\n') if url.strip()]
+        urls = urls.split('\n')
         download_type = st.radio("Download type", ("Video", "Audio Only"))
         if st.button("Download"):
             st.write("Downloading...")
             downloaded_files = []
             for url in tqdm(urls):
-                if url:
+                if url.strip():
                     file_path = download_video(url, audio_only=(download_type == "Audio Only"))
                     if file_path:
                         downloaded_files.append(file_path)
                         st.session_state['downloaded_files'].append(file_path)
             st.write("All downloads completed!")
-            if len(downloaded_files) > 1:
-                zip_file_path = create_zip_file(downloaded_files)
-                with open(zip_file_path, "rb") as zip_file:
-                    st.download_button(
-                        label="Download All Videos as ZIP",
-                        data=zip_file,
-                        file_name="videos_download.zip",
-                        mime="application/zip"
-                    )
-
     else:
         st.write("Enter the YouTube playlist URL:")
         playlist_url = st.text_input("Enter Playlist URL")
@@ -87,27 +69,16 @@ def main():
             for file_path in downloaded_files:
                 if file_path:
                     st.session_state['downloaded_files'].append(file_path)
-            if downloaded_files:
-                zip_file_path = create_zip_file(downloaded_files)
-                with open(zip_file_path, "rb") as zip_file:
-                    st.download_button(
-                        label="Download Complete Playlist",
-                        data=zip_file,
-                        file_name="playlist_download.zip",
-                        mime="application/zip"
-                    )
 
-    # Display download buttons for all downloaded files individually
-    if option == "Individual Videos":
-        for file_path in st.session_state['downloaded_files']:
-            if len(st.session_state['downloaded_files']) == 1:
-                with open(file_path, "rb") as file:
-                    st.download_button(
-                        label=f"Download {os.path.basename(file_path)}",
-                        data=file,
-                        file_name=os.path.basename(file_path),
-                        mime="application/octet-stream"
-                    )
+    # Display download buttons for all downloaded files
+    for file_path in st.session_state['downloaded_files']:
+        with open(file_path, "rb") as file:
+            st.download_button(
+                label=f"Download {os.path.basename(file_path)}",
+                data=file,
+                file_name=os.path.basename(file_path),
+                mime="application/octet-stream"
+            )
 
 if __name__ == "__main__":
     main()
