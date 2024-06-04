@@ -1,5 +1,3 @@
-import os
-import tempfile
 import streamlit as st
 from pytube import YouTube, Playlist
 from tqdm import tqdm
@@ -13,16 +11,8 @@ def download_video(link, audio_only=False):
         else:
             stream = yt.streams.get_highest_resolution()
             st.write(f"Downloading {yt.title}...")
-
-        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-            stream.stream_to_file(temp_file.name)
-            st.write(f"{yt.title} downloaded successfully.")
-            st.download_button(
-                label=f"Download {yt.title}",
-                data=temp_file.read(),
-                file_name=f"{yt.title}.{'mp3' if audio_only else stream.subtype}",
-                mime=f"audio/mpeg" if audio_only else stream.mime_type,
-            )
+        stream.download(output_path='downloads')
+        st.write(f"{yt.title} downloaded successfully.")
     except Exception as e:
         st.error(f"An error occurred: {e}")
 
