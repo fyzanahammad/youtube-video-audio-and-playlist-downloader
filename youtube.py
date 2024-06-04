@@ -3,6 +3,10 @@ from pytube import YouTube, Playlist
 from tqdm import tqdm
 import os
 
+# Initialize session state if not already initialized
+if 'downloaded_files' not in st.session_state:
+    st.session_state['downloaded_files'] = []
+
 def download_video(link, audio_only=False):
     try:
         yt = YouTube(link)
@@ -53,15 +57,8 @@ def main():
                     file_path = download_video(url, audio_only=(download_type == "Audio Only"))
                     if file_path:
                         downloaded_files.append(file_path)
+                        st.session_state['downloaded_files'].append(file_path)
             st.write("All downloads completed!")
-            for file_path in downloaded_files:
-                with open(file_path, "rb") as file:
-                    btn = st.download_button(
-                        label=f"Download {os.path.basename(file_path)}",
-                        data=file,
-                        file_name=os.path.basename(file_path),
-                        mime="application/octet-stream"
-                    )
     else:
         st.write("Enter the YouTube playlist URL:")
         playlist_url = st.text_input("Enter Playlist URL")
@@ -70,13 +67,18 @@ def main():
             st.write("Downloading playlist...")
             downloaded_files = download_playlist(playlist_url, audio_only=(download_type == "Audio Only"))
             for file_path in downloaded_files:
-                with open(file_path, "rb") as file:
-                    btn = st.download_button(
-                        label=f"Download {os.path.basename(file_path)}",
-                        data=file,
-                        file_name=os.path.basename(file_path),
-                        mime="application/octet-stream"
-                    )
+                if file_path:
+                    st.session_state['downloaded_files'].append(file_path)
+
+    # Display download buttons for all downloaded files
+    for file_path in st.session_state['downloaded_files']:
+        with open(file_path, "rb") as file:
+            st.download_button(
+                label=f"Download {os.path.basename(file_path)}",
+                data=file,
+                file_name=os.path.basename(file_path),
+                mime="application/octet-stream"
+            )
 
 if __name__ == "__main__":
     main()
