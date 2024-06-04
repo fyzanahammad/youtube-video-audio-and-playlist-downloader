@@ -14,19 +14,21 @@ def download_video(link, audio_only=False):
             stream = yt.streams.get_highest_resolution()
             st.write(f"Downloading {yt.title}...")
 
-        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-            stream.download(output_path=temp_file.name)
-            temp_file.flush()  # Flush the file to ensure it's written to disk
-            st.write(f"{yt.title} downloaded successfully.")
-            st.download_button(
-                label=f"Download {yt.title}",
-                data=temp_file.read(),
-                file_name=f"{yt.title}.{'mp3' if audio_only else stream.subtype}",
-                mime=f"audio/mpeg" if audio_only else stream.mime_type,
-            )
+        fd, temp_file_path = tempfile.mkstemp()
+        try:
+            stream.download(output_path=temp_file_path)
+            with open(temp_file_path, 'rb') as temp_file:
+                st.write(f"{yt.title} downloaded successfully.")
+                st.download_button(
+                    label=f"Download {yt.title}",
+                    data=temp_file.read(),
+                    file_name=f"{yt.title}.{'mp3' if audio_only else stream.subtype}",
+                    mime=f"audio/mpeg" if audio_only else stream.mime_type,
+                )
+        finally:
+            os.remove(temp_file_path)
     except Exception as e:
         st.error(f"An error occurred: {e}")
-
 def download_playlist(playlist_url, audio_only=False):
     try:
         playlist = Playlist(playlist_url)
