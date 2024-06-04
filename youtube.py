@@ -15,7 +15,8 @@ def download_video(link, audio_only=False):
             st.write(f"Downloading {yt.title}...")
 
         with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-            stream.stream_to_file(temp_file.name)
+            stream.download(output_path=temp_file.name)
+            temp_file.flush()  # Flush the file to ensure it's written to disk
             st.write(f"{yt.title} downloaded successfully.")
             st.download_button(
                 label=f"Download {yt.title}",
