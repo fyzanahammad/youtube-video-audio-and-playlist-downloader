@@ -1,5 +1,6 @@
 import streamlit as st
 from pytube import YouTube, Playlist
+from pytube.cli import on_progress
 from tqdm import tqdm
 import os
 
@@ -9,7 +10,7 @@ if 'downloaded_files' not in st.session_state:
 
 def download_video(link, audio_only=False, resolution=None):
     try:
-        yt = YouTube(link)
+        yt = YouTube(link, on_progress_callback=on_progress)
         if audio_only:
             stream = yt.streams.filter(only_audio=True).first()
             st.write(f"Downloading audio for {yt.title}...")
