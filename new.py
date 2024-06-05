@@ -47,6 +47,14 @@ def download_playlist(playlist_url, audio_only=False, resolution=None):
         st.error(f"An error occurred: {e}")
         return []
 
+def get_video_info(link):
+    try:
+        yt = YouTube(link)
+        return yt.title, yt.thumbnail_url
+    except Exception as e:
+        st.error(f"An error occurred: {e}")
+        return None, None
+
 def main():
     st.title("YouTube Video Downloader")
 
@@ -68,9 +76,24 @@ def main():
         st.write("Enter the YouTube video URLs:")
         urls = st.text_area("Enter URLs (one per line):", height=200)
         urls = [url.strip() for url in urls.split('\n') if url.strip()]
+
+        for url in urls:
+            if url:
+                title, thumbnail_url = get_video_info(url)
+                if title and thumbnail_url:
+                    st.image(thumbnail_url, width=100)
+                    st.write(title)
+
     else:
         st.write("Enter the YouTube playlist URL:")
         playlist_url = st.text_input("Enter Playlist URL")
+        if playlist_url:
+            playlist = Playlist(playlist_url)
+            for url in playlist.video_urls:
+                title, thumbnail_url = get_video_info(url)
+                if title and thumbnail_url:
+                    st.image(thumbnail_url, width=100)
+                    st.write(title)
 
     if st.button("Download"):
         st.write("Downloading...")

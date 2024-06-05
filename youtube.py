@@ -1,15 +1,14 @@
 import streamlit as st
 from pytube import YouTube, Playlist
-from tqdm import tqdm
 import os
 
 # Initialize session state if not already initialized
 if 'downloaded_files' not in st.session_state:
     st.session_state['downloaded_files'] = []
 
-def download_video(link, audio_only=False, resolution=None):
+def download_video(link, audio_only=False, resolution=None, progress_bar=None):
     try:
-        yt = YouTube(link)
+        yt = YouTube(link, on_progress_callback=lambda stream, chunk, bytes_remaining: progress_callback(stream, chunk, bytes_remaining, progress_bar))
         if audio_only:
             stream = yt.streams.filter(only_audio=True).first()
             st.write(f"Downloading audio for {yt.title}...")
@@ -36,8 +35,9 @@ def download_playlist(playlist_url, audio_only=False, resolution=None):
     try:
         playlist = Playlist(playlist_url)
         downloaded_files = []
-        for video_url in tqdm(playlist.video_urls):
-            file_path = download_video(video_url, audio_only, resolution)
+        for video_url in playlist.video_urls:
+            progress_bar = st.progress(0)  # Create a new progress bar for each video
+            file_path = download_video(video_url, audio_only, resolution, progress_bar)
             if file_path:
                 downloaded_files.append(file_path)
         st.write("All videos in the playlist downloaded successfully!")
@@ -45,6 +45,21 @@ def download_playlist(playlist_url, audio_only=False, resolution=None):
     except Exception as e:
         st.error(f"An error occurred: {e}")
         return []
+
+def get_video_info(link):
+    try:
+        yt = YouTube(link)
+        return yt.title, yt.thumbnail_url
+    except Exception as e:
+        st.error(f"An error occurred: {e}")
+        return None, None
+
+def progress_callback(stream, chunk, bytes_remaining, progress_bar):
+    total_size = stream.filesize
+    bytes_downloaded = total_size - bytes_remaining
+    percentage_of_completion = bytes_downloaded / total_size * 100
+    if progress_bar:
+        progress_bar.progress(percentage_of_completion / 100)
 
 def main():
     st.title("YouTube Video Downloader")
@@ -67,18 +82,34 @@ def main():
         st.write("Enter the YouTube video URLs:")
         urls = st.text_area("Enter URLs (one per line):", height=200)
         urls = [url.strip() for url in urls.split('\n') if url.strip()]
+
+        for url in urls:
+            if url:
+                title, thumbnail_url = get_video_info(url)
+                if title and thumbnail_url:
+                    st.image(thumbnail_url, width=100)
+                    st.write(title)
+
     else:
         st.write("Enter the YouTube playlist URL:")
         playlist_url = st.text_input("Enter Playlist URL")
+        if playlist_url:
+            playlist = Playlist(playlist_url)
+            for url in playlist.video_urls:
+                title, thumbnail_url = get_video_info(url)
+                if title and thumbnail_url:
+                    st.image(thumbnail_url, width=100)
+                    st.write(title)
 
     if st.button("Download"):
         st.write("Downloading...")
         downloaded_files = []
 
         if option == "Individual Videos":
-            for url in tqdm(urls):
+            for url in urls:
                 if url:
-                    file_path = download_video(url, audio_only=(download_type == "Audio Only"), resolution=resolution)
+                    progress_bar = st.progress(0)  # Create a progress bar for each video
+                    file_path = download_video(url, audio_only=(download_type == "Audio Only"), resolution=resolution, progress_bar=progress_bar)
                     if file_path:
                         downloaded_files.append(file_path)
                         st.session_state['downloaded_files'].append(file_path)
