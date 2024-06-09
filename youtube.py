@@ -1,7 +1,7 @@
 import streamlit as st
 from pytube import YouTube, Playlist
+from moviepy.editor import AudioFileClip
 import os
-from pydub import AudioSegment
 
 # Initialize session state if not already initialized
 if 'downloaded_files' not in st.session_state:
@@ -29,8 +29,8 @@ def download_video(link, audio_only=False, resolution=None, progress_bar=None, c
         
         if convert_to_mp3:
             mp3_file_path = os.path.splitext(file_path)[0] + '.mp3'
-            audio = AudioSegment.from_file(file_path)
-            audio.export(mp3_file_path, format="mp3")
+            audio = AudioFileClip(file_path)
+            audio.write_audiofile(mp3_file_path, codec='libmp3lame')
             os.remove(file_path)
             file_path = mp3_file_path
 
