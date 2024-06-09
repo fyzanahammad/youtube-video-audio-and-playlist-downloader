@@ -1,12 +1,13 @@
 import streamlit as st
 from pytube import YouTube, Playlist
 import os
+from pydub import AudioSegment
 
 # Initialize session state if not already initialized
 if 'downloaded_files' not in st.session_state:
     st.session_state['downloaded_files'] = []
 
-def download_video(link, audio_only=False, resolution=None, progress_bar=None):
+def download_video(link, audio_only=False, resolution=None, progress_bar=None, convert_to_mp3=False):
     try:
         yt = YouTube(link, on_progress_callback=lambda stream, chunk, bytes_remaining: progress_callback(stream, chunk, bytes_remaining, progress_bar))
         if audio_only:
@@ -25,19 +26,27 @@ def download_video(link, audio_only=False, resolution=None, progress_bar=None):
         if not os.path.exists(output_path):
             os.makedirs(output_path)
         file_path = stream.download(output_path=output_path)
+        
+        if convert_to_mp3:
+            mp3_file_path = os.path.splitext(file_path)[0] + '.mp3'
+            audio = AudioSegment.from_file(file_path)
+            audio.export(mp3_file_path, format="mp3")
+            os.remove(file_path)
+            file_path = mp3_file_path
+
         st.write(f"{yt.title} downloaded successfully.")
         return file_path
     except Exception as e:
         st.error(f"An error occurred: {e}")
         return None
 
-def download_playlist(playlist_url, audio_only=False, resolution=None):
+def download_playlist(playlist_url, audio_only=False, resolution=None, convert_to_mp3=False):
     try:
         playlist = Playlist(playlist_url)
         downloaded_files = []
         for video_url in playlist.video_urls:
             progress_bar = st.progress(0)  # Create a new progress bar for each video
-            file_path = download_video(video_url, audio_only, resolution, progress_bar)
+            file_path = download_video(video_url, audio_only, resolution, progress_bar, convert_to_mp3)
             if file_path:
                 downloaded_files.append(file_path)
         st.write("All videos in the playlist downloaded successfully!")
@@ -78,6 +87,10 @@ def main():
     with col3:
         resolution = st.selectbox("Select video quality", quality_options)
 
+    convert_to_mp3 = False
+    if download_type == "Audio Only":
+        convert_to_mp3 = st.checkbox("Convert to MP3")
+
     if option == "Individual Videos":
         st.write("Enter the YouTube video URLs:")
         urls = st.text_area("Enter URLs (one per line):", height=200)
@@ -109,12 +122,12 @@ def main():
             for url in urls:
                 if url:
                     progress_bar = st.progress(0)  # Create a progress bar for each video
-                    file_path = download_video(url, audio_only=(download_type == "Audio Only"), resolution=resolution, progress_bar=progress_bar)
+                    file_path = download_video(url, audio_only=(download_type == "Audio Only"), resolution=resolution, progress_bar=progress_bar, convert_to_mp3=convert_to_mp3)
                     if file_path:
                         downloaded_files.append(file_path)
                         st.session_state['downloaded_files'].append(file_path)
         else:
-            downloaded_files = download_playlist(playlist_url, audio_only=(download_type == "Audio Only"), resolution=resolution)
+            downloaded_files = download_playlist(playlist_url, audio_only=(download_type == "Audio Only"), resolution=resolution, convert_to_mp3=convert_to_mp3)
             for file_path in downloaded_files:
                 if file_path:
                     st.session_state['downloaded_files'].append(file_path)
