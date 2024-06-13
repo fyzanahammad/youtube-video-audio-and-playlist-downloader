@@ -2,3 +2,4 @@ streamlit
 pytube
 tqdm
 moviepy
+fastapi
