@@ -1,135 +1,160 @@
 import streamlit as st
-from pytube import YouTube, Playlist
+import yt_dlp
 import os
+from typing import Optional, Tuple, List
+from datetime import datetime
 
-# Initialize session state if not already initialized
-if 'downloaded_files' not in st.session_state:
-    st.session_state['downloaded_files'] = []
+# Initialize session state
+if 'url_list' not in st.session_state:
+    st.session_state.url_list = [""]
 
-def download_video(link, audio_only=False, resolution=None, progress_bar=None):
+def format_size(bytes):
+    """Format bytes to human readable size"""
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if bytes < 1024:
+            return f"{bytes:.1f} {unit}"
+        bytes /= 1024
+    return f"{bytes:.1f} TB"
+
+def get_video_info(url: str) -> Tuple[Optional[str], Optional[str], bool]:
+    """Get video title and thumbnail URL"""
     try:
-        yt = YouTube(link, on_progress_callback=lambda stream, chunk, bytes_remaining: progress_callback(stream, chunk, bytes_remaining, progress_bar))
-        if audio_only:
-            stream = yt.streams.filter(only_audio=True).first()
-            st.write(f"Downloading audio for {yt.title}...")
-        else:
-            if resolution:
-                stream = yt.streams.filter(res=resolution, progressive=True).first()
-                if not stream:
-                    stream = yt.streams.get_highest_resolution()
-                    st.warning(f"Requested resolution {resolution} not available for {yt.title}. Downloading highest available resolution.")
-            else:
-                stream = yt.streams.get_highest_resolution()
-            st.write(f"Downloading {yt.title} at {resolution or 'highest available'} resolution...")
-        output_path = 'downloads'
-        if not os.path.exists(output_path):
-            os.makedirs(output_path)
-        file_path = stream.download(output_path=output_path)
-        st.write(f"{yt.title} downloaded successfully.")
-        return file_path
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': True
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            return info.get('title'), info.get('thumbnail'), True
     except Exception as e:
-        st.error(f"An error occurred: {e}")
+        return None, None, False
+
+def download_video(url: str, audio_only: bool = False) -> Optional[Tuple[str, bytes]]:
+    """Download video and return filename and data"""
+    try:
+        temp_dir = "temp_downloads"
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        output_template = os.path.join(temp_dir, f'%(title)s.%(ext)s')
+        
+        if audio_only:
+            ydl_opts = {
+                'format': 'bestaudio/best',
+                'outtmpl': output_template,
+                'quiet': True,
+                'no_warnings': True,
+                'postprocessors': [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'mp3',
+                }]
+            }
+        else:
+            ydl_opts = {
+                'format': 'best[ext=mp4]/best',
+                'outtmpl': output_template,
+                'quiet': True,
+                'no_warnings': True,
+            }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            filename = ydl.prepare_filename(info)
+            
+            if audio_only:
+                filename = filename.rsplit('.', 1)[0] + '.mp3'
+            
+            # Read the file data
+            with open(filename, 'rb') as f:
+                file_data = f.read()
+            
+            # Clean up temp file
+            try:
+                os.remove(filename)
+            except:
+                pass
+            
+            return os.path.basename(filename), file_data
+
+    except Exception as e:
+        st.error(f"Download failed: {str(e)}")
         return None
 
-def download_playlist(playlist_url, audio_only=False, resolution=None):
-    try:
-        playlist = Playlist(playlist_url)
-        downloaded_files = []
-        for video_url in playlist.video_urls:
-            progress_bar = st.progress(0)  # Create a new progress bar for each video
-            file_path = download_video(video_url, audio_only, resolution, progress_bar)
-            if file_path:
-                downloaded_files.append(file_path)
-        st.write("All videos in the playlist downloaded successfully!")
-        return downloaded_files
-    except Exception as e:
-        st.error(f"An error occurred: {e}")
-        return []
-
-def get_video_info(link):
-    try:
-        yt = YouTube(link)
-        return yt.title, yt.thumbnail_url
-    except Exception as e:
-        st.error(f"An error occurred: {e}")
-        return None, None
-
-def progress_callback(stream, chunk, bytes_remaining, progress_bar):
-    total_size = stream.filesize
-    bytes_downloaded = total_size - bytes_remaining
-    percentage_of_completion = bytes_downloaded / total_size * 100
-    if progress_bar:
-        progress_bar.progress(percentage_of_completion / 100)
+def get_binary_file_downloader_html(bin_data, file_label='File', file_name='file.txt'):
+    """Generate HTML code for downloading binary data"""
+    import base64
+    b64 = base64.b64encode(bin_data).decode()
+    download_link = f'''
+        <a href="data:application/octet-stream;base64,{b64}" 
+           download="{file_name}" 
+           style="text-decoration:none;padding:8px 15px;background-color:#4CAF50;color:white;border-radius:5px;cursor:pointer;">
+            📥 Save {file_label}
+        </a>
+    '''
+    return download_link
 
 def main():
-    st.title("YouTube Video Downloader")
+    st.title("🎥 YouTube Downloader")
+    st.markdown("Download your favorite YouTube videos!")
 
-    quality_options = ["144p", "240p", "360p", "480p", "720p", "1080p"]
-
-    # Create columns for options
-    col1, col2, col3 = st.columns(3)
+    option = st.radio("What would you like to download?", 
+                     ["🎵 Audio Only", "🎬 Video with Audio"],
+                     horizontal=True)
     
-    with col1:
-        option = st.selectbox("Select download option", ("Individual Videos", "Playlist"))
-
-    with col2:
-        download_type = st.selectbox("Download type", ("Video", "Audio Only"))
-
-    with col3:
-        resolution = st.selectbox("Select video quality", quality_options)
-
-    if option == "Individual Videos":
-        st.write("Enter the YouTube video URLs:")
-        urls = st.text_area("Enter URLs (one per line):", height=200)
-        urls = [url.strip() for url in urls.split('\n') if url.strip()]
-
-        for url in urls:
-            if url:
-                title, thumbnail_url = get_video_info(url)
-                if title and thumbnail_url:
-                    st.image(thumbnail_url, width=100)
-                    st.write(title)
-
-    else:
-        st.write("Enter the YouTube playlist URL:")
-        playlist_url = st.text_input("Enter Playlist URL")
-        if playlist_url:
-            playlist = Playlist(playlist_url)
-            for url in playlist.video_urls:
-                title, thumbnail_url = get_video_info(url)
-                if title and thumbnail_url:
-                    st.image(thumbnail_url, width=100)
-                    st.write(title)
-
-    if st.button("Download"):
-        st.write("Downloading...")
-        downloaded_files = []
-
-        if option == "Individual Videos":
-            for url in urls:
-                if url:
-                    progress_bar = st.progress(0)  # Create a progress bar for each video
-                    file_path = download_video(url, audio_only=(download_type == "Audio Only"), resolution=resolution, progress_bar=progress_bar)
-                    if file_path:
-                        downloaded_files.append(file_path)
-                        st.session_state['downloaded_files'].append(file_path)
-        else:
-            downloaded_files = download_playlist(playlist_url, audio_only=(download_type == "Audio Only"), resolution=resolution)
-            for file_path in downloaded_files:
-                if file_path:
-                    st.session_state['downloaded_files'].append(file_path)
-
-        st.write("All downloads completed!")
-
-    # Display download buttons for all downloaded files individually
-    for file_path in st.session_state['downloaded_files']:
-        with open(file_path, "rb") as file:
-            st.download_button(
-                label=f"Download {os.path.basename(file_path)}",
-                data=file,
-                file_name=os.path.basename(file_path),
-                mime="application/octet-stream"
+    audio_only = option == "🎵 Audio Only"
+    
+    # URL input section
+    for i, url in enumerate(st.session_state.url_list):
+        col1, col2 = st.columns([6, 1])
+        with col1:
+            new_url = st.text_input(
+                "Enter YouTube URL:",
+                value=url,
+                key=f"url_{i}",
+                placeholder="https://www.youtube.com/watch?v=..."
             )
+            st.session_state.url_list[i] = new_url
+        
+        with col2:
+            if len(st.session_state.url_list) > 1:
+                if st.button("❌", key=f"remove_{i}"):
+                    st.session_state.url_list.pop(i)
+                    st.rerun()
+    
+    if st.button("➕ Add Another URL"):
+        st.session_state.url_list.append("")
+        st.rerun()
+    
+    # Preview and download section
+    urls_to_process = [url for url in st.session_state.url_list if url.strip()]
+    
+    if urls_to_process:
+        st.subheader("Videos to Download")
+        for url in urls_to_process:
+            title, thumbnail_url, is_valid = get_video_info(url)
+            if is_valid:
+                col1, col2, col3 = st.columns([1, 2, 1])
+                with col1:
+                    if thumbnail_url:
+                        st.image(thumbnail_url, width=120)
+                with col2:
+                    st.markdown(f"**{title}**")
+                with col3:
+                    if st.button("⬇️ Download", key=f"download_{url}"):
+                        with st.spinner("Downloading..."):
+                            result = download_video(url, audio_only)
+                            if result:
+                                filename, file_data = result
+                                st.markdown(
+                                    get_binary_file_downloader_html(
+                                        file_data,
+                                        'File',
+                                        filename
+                                    ),
+                                    unsafe_allow_html=True
+                                )
+                                st.success("✅ Download complete!")
+                st.markdown("---")
 
 if __name__ == "__main__":
     main()

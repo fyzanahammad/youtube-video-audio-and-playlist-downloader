@@ -1,5 +1,6 @@
 streamlit
-pytube
+yt-dlp
 tqdm
 moviepy
 fastapi
+requests
