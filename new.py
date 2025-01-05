@@ -250,11 +250,11 @@ def main():
                 st.write("")  # Add some spacing
                 if st.button("❌", key=f"remove_{i}", help="Remove this URL"):
                     st.session_state.url_list.pop(i)
-                    st.rerun()
+                    st.experimental_rerun()
 
     if st.button("➕ Add Another Video"):
         st.session_state.url_list.append("")
-        st.rerun()
+        # No rerun here, let Streamlit handle the state update
 
     # Show video list and download section
     if st.session_state.url_list and any(st.session_state.url_list):
@@ -265,98 +265,98 @@ def main():
         valid_urls = [url for url in st.session_state.url_list if url.strip()]
         st.write(f"{len(valid_urls)} video(s) ready to download")
         
-        # Download All button at the top
-        if valid_urls:
-            if st.button("⬇️ Download All Videos", type="primary"):
-                with st.empty():
-                    for url in valid_urls:
-                        # Create a container for this video's progress
-                        progress_container = st.empty()
-                        with progress_container.container():
-                            st.write(f"Downloading: {get_video_info(url)[0]}")
-                            progress_bar = st.progress(0, "Preparing download...")
-                            status_text = st.empty()
-                            
-                            # Initialize progress in session state
-                            if f'progress_{url}' not in st.session_state:
-                                st.session_state[f'progress_{url}'] = {
-                                    'progress': 0,
-                                    'downloaded': 0,
-                                    'total': 0,
-                                    'speed': 0,
-                                    'eta': 0,
-                                    'status': 'Starting...'
-                                }
-                            
-                            format_id = st.session_state.format_selections.get(url)
-                            success, filename, file_content = download_video(url, audio_only, format_id)
-                            
-                            if success:
-                                progress_bar.progress(1.0, "Download complete!")
-                                st.session_state[f'download_{url}'] = {
-                                    'filename': filename,
-                                    'content': file_content
-                                }
+        # Download All button
+        if valid_urls and st.button("⬇️ Download All Videos", type="primary", use_container_width=True):
+            for url in valid_urls:
+                title = get_video_info(url)[0]
+                progress_placeholder = st.empty()
+                
+                with progress_placeholder.container():
+                    st.write(f"**Downloading:** {title}")
+                    progress_bar = st.progress(0)
+                    status_cols = st.columns(3)
+                    size_text = status_cols[0].empty()
+                    speed_text = status_cols[1].empty()
+                    eta_text = status_cols[2].empty()
+                    
+                    def update_progress():
+                        if f'progress_{url}' in st.session_state:
+                            info = st.session_state[f'progress_{url}']
+                            if isinstance(info, dict):
+                                progress = info.get('progress', 0)
+                                downloaded = info.get('downloaded', 0)
+                                total = info.get('total', 0)
+                                speed = info.get('speed', 0)
+                                eta = info.get('eta', 0)
                                 
-                                # Show save button
-                                st.download_button(
-                                    "💾 Save to Computer",
-                                    data=file_content,
-                                    file_name=filename,
-                                    mime="application/octet-stream",
-                                    key=f"save_{url}"
-                                )
-                            else:
-                                st.error("Download failed")
+                                progress_bar.progress(progress)
+                                size_text.write(f"📥 {format_size(downloaded)}/{format_size(total)}")
+                                speed_text.write(f"🚀 {format_speed(speed)}")
+                                if eta > 0:
+                                    eta_text.write(f"⏱️ {eta}s remaining")
+                                else:
+                                    eta_text.write(f"⚙️ Processing...")
+                    
+                    format_id = st.session_state.format_selections.get(url)
+                    success, filename, file_content = download_video(url, audio_only, format_id)
+                    
+                    if success:
+                        st.session_state[f'download_{url}'] = {
+                            'filename': filename,
+                            'content': file_content
+                        }
+                        st.success("✅ Download complete!")
+                        st.download_button(
+                            "💾 Save to Computer",
+                            data=file_content,
+                            file_name=filename,
+                            mime="application/octet-stream",
+                            use_container_width=True
+                        )
         
-        # Show video information and progress
+        # Show video information
         for url in valid_urls:
+            st.markdown("---")
             title, thumbnail_url, _ = get_video_info(url)
             if title and thumbnail_url:
-                st.markdown("---")
-                cols = st.columns([1, 3])
+                cols = st.columns([1, 4])
                 with cols[0]:
                     st.image(thumbnail_url, width=100)
                 with cols[1]:
                     st.write(f"**{title}**")
                     
-                    # Show progress information
+                    # Show selected quality if video mode
+                    if not audio_only:
+                        format_id = st.session_state.format_selections.get(url)
+                        if format_id:
+                            formats = get_video_formats(url)
+                            selected_format = next((f for f in formats if f['format_id'] == format_id), None)
+                            if selected_format:
+                                st.write(f"🎬 Selected: {selected_format['resolution']} ({selected_format['filesize']:.1f}MB)")
+                    
+                    # Show progress if downloading
                     if f'progress_{url}' in st.session_state:
-                        progress_info = st.session_state[f'progress_{url}']
-                        if isinstance(progress_info, dict):
-                            progress = progress_info.get('progress', 0)
-                            downloaded = progress_info.get('downloaded', 0)
-                            total = progress_info.get('total', 0)
-                            speed = progress_info.get('speed', 0)
-                            eta = progress_info.get('eta', 0)
-                            status = progress_info.get('status', 'Waiting...')
+                        info = st.session_state[f'progress_{url}']
+                        if isinstance(info, dict):
+                            progress = info.get('progress', 0)
+                            downloaded = info.get('downloaded', 0)
+                            total = info.get('total', 0)
+                            speed = info.get('speed', 0)
                             
-                            # Progress bar with status
-                            progress_text = f"Downloading... {progress * 100:.1f}%"
-                            st.progress(progress, progress_text)
-                            
-                            # Status information
-                            status_cols = st.columns(3)
-                            with status_cols[0]:
-                                st.write(f"📥 {format_size(downloaded)}/{format_size(total)}")
-                            with status_cols[1]:
-                                st.write(f"🚀 {format_speed(speed)}")
-                            with status_cols[2]:
-                                if eta > 0:
-                                    st.write(f"⏱️ {eta}s remaining")
-                                else:
-                                    st.write(f"⚙️ {status}")
+                            st.progress(progress, f"Downloading... {progress * 100:.1f}%")
+                            cols = st.columns(3)
+                            cols[0].write(f"📥 {format_size(downloaded)}/{format_size(total)}")
+                            cols[1].write(f"🚀 {format_speed(speed)}")
                     
                     # Show save button if download is complete
                     if f'download_{url}' in st.session_state:
                         download_info = st.session_state[f'download_{url}']
-                        st.success("✅ Download complete!")
                         st.download_button(
                             "💾 Save to Computer",
                             data=download_info['content'],
                             file_name=download_info['filename'],
                             mime="application/octet-stream",
-                            key=f"save_complete_{url}"
+                            use_container_width=True
                         )
 
 if __name__ == "__main__":
