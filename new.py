@@ -21,7 +21,10 @@ def format_size(bytes):
 
 def format_speed(bytes_per_second):
     """Format speed to human readable format"""
-    return f"{format_size(bytes_per_second)}/s"
+    if bytes_per_second == 0:
+        return "0 B/s"
+    size = format_size(bytes_per_second)
+    return f"{size}/s"
 
 def get_video_formats(url: str) -> List[dict]:
     """Get available formats for a video with size information"""
@@ -129,9 +132,22 @@ def download_video(url: str, audio_only: bool = False, format_id: Optional[str] 
                 if d['status'] == 'downloading':
                     total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
                     downloaded = d.get('downloaded_bytes', 0)
+                    speed = d.get('speed', 0)
+                    
                     if total > 0:
                         progress = (downloaded / total)
-                        st.session_state[f'progress_{url}'] = progress
+                        eta = d.get('eta', 0)
+                        
+                        # Store progress information in session state
+                        st.session_state[f'progress_{url}'] = {
+                            'progress': progress,
+                            'downloaded': downloaded,
+                            'total': total,
+                            'speed': speed,
+                            'eta': eta
+                        }
+                elif d['status'] == 'finished':
+                    st.session_state[f'progress_{url}']['status'] = 'Processing...'
 
             ydl_opts['progress_hooks'] = [progress_hook]
             
@@ -192,10 +208,12 @@ def main():
     
     audio_only = option == "🎵 Audio Only"
     
-    # URL input section
+    # URL input section with improved layout
     for i, url in enumerate(st.session_state.url_list):
-        col1, col2 = st.columns([6, 1])
-        with col1:
+        cols = st.columns([4, 2, 1])  # Adjust column ratios for better layout
+        
+        # URL input
+        with cols[0]:
             new_url = st.text_input(
                 "Enter YouTube URL:",
                 value=url,
@@ -203,8 +221,9 @@ def main():
                 placeholder="https://www.youtube.com/watch?v=..."
             )
             st.session_state.url_list[i] = new_url
-            
-            # Show format selector for videos
+        
+        # Quality selector
+        with cols[1]:
             if new_url and not audio_only:
                 formats = get_video_formats(new_url)
                 if formats:
@@ -215,19 +234,21 @@ def main():
                         format_options.append(f"{f['resolution']}{note_text} {size_text}")
                     
                     selected_index = st.selectbox(
-                        "Select Quality:",
+                        "Quality:",
                         range(len(format_options)),
                         format_func=lambda x: format_options[x],
                         key=f"format_{i}",
-                        index=len(format_options)-1  # Default to highest quality
+                        index=len(format_options)-1
                     )
                     st.session_state.format_selections[new_url] = formats[selected_index]['format_id']
                 else:
-                    st.info("ℹ️ Will download in best available quality")
+                    st.info("ℹ️ Best quality", icon="ℹ️")
         
-        with col2:
+        # Delete button
+        with cols[2]:
             if len(st.session_state.url_list) > 1:
-                if st.button("❌", key=f"remove_{i}"):
+                st.write("")  # Add some spacing
+                if st.button("❌", key=f"remove_{i}", help="Remove this URL"):
                     st.session_state.url_list.pop(i)
                     st.rerun()
 
@@ -244,42 +265,98 @@ def main():
         valid_urls = [url for url in st.session_state.url_list if url.strip()]
         st.write(f"{len(valid_urls)} video(s) ready to download")
         
-        # Show video information
+        # Download All button at the top
+        if valid_urls:
+            if st.button("⬇️ Download All Videos", type="primary"):
+                with st.empty():
+                    for url in valid_urls:
+                        # Create a container for this video's progress
+                        progress_container = st.empty()
+                        with progress_container.container():
+                            st.write(f"Downloading: {get_video_info(url)[0]}")
+                            progress_bar = st.progress(0, "Preparing download...")
+                            status_text = st.empty()
+                            
+                            # Initialize progress in session state
+                            if f'progress_{url}' not in st.session_state:
+                                st.session_state[f'progress_{url}'] = {
+                                    'progress': 0,
+                                    'downloaded': 0,
+                                    'total': 0,
+                                    'speed': 0,
+                                    'eta': 0,
+                                    'status': 'Starting...'
+                                }
+                            
+                            format_id = st.session_state.format_selections.get(url)
+                            success, filename, file_content = download_video(url, audio_only, format_id)
+                            
+                            if success:
+                                progress_bar.progress(1.0, "Download complete!")
+                                st.session_state[f'download_{url}'] = {
+                                    'filename': filename,
+                                    'content': file_content
+                                }
+                                
+                                # Show save button
+                                st.download_button(
+                                    "💾 Save to Computer",
+                                    data=file_content,
+                                    file_name=filename,
+                                    mime="application/octet-stream",
+                                    key=f"save_{url}"
+                                )
+                            else:
+                                st.error("Download failed")
+        
+        # Show video information and progress
         for url in valid_urls:
             title, thumbnail_url, _ = get_video_info(url)
             if title and thumbnail_url:
-                col1, col2 = st.columns([1, 4])
-                with col1:
+                st.markdown("---")
+                cols = st.columns([1, 3])
+                with cols[0]:
                     st.image(thumbnail_url, width=100)
-                with col2:
-                    st.write(title)
-                    # Add progress bar for this video
-                    if f'progress_{url}' in st.session_state:
-                        st.progress(st.session_state[f'progress_{url}'])
-        
-        # Download All button
-        if st.button("⬇️ Download All Videos"):
-            for url in valid_urls:
-                format_id = st.session_state.format_selections.get(url)
-                success, filename, file_content = download_video(url, audio_only, format_id)
-                
-                if success:
-                    # Store the downloaded content in session state
-                    st.session_state[f'download_{url}'] = {
-                        'filename': filename,
-                        'content': file_content
-                    }
+                with cols[1]:
+                    st.write(f"**{title}**")
                     
-                    # Show save button for this video
-                    col1, col2 = st.columns([4, 1])
-                    with col1:
-                        st.success(f"✅ {filename} downloaded successfully!")
-                    with col2:
+                    # Show progress information
+                    if f'progress_{url}' in st.session_state:
+                        progress_info = st.session_state[f'progress_{url}']
+                        if isinstance(progress_info, dict):
+                            progress = progress_info.get('progress', 0)
+                            downloaded = progress_info.get('downloaded', 0)
+                            total = progress_info.get('total', 0)
+                            speed = progress_info.get('speed', 0)
+                            eta = progress_info.get('eta', 0)
+                            status = progress_info.get('status', 'Waiting...')
+                            
+                            # Progress bar with status
+                            progress_text = f"Downloading... {progress * 100:.1f}%"
+                            st.progress(progress, progress_text)
+                            
+                            # Status information
+                            status_cols = st.columns(3)
+                            with status_cols[0]:
+                                st.write(f"📥 {format_size(downloaded)}/{format_size(total)}")
+                            with status_cols[1]:
+                                st.write(f"🚀 {format_speed(speed)}")
+                            with status_cols[2]:
+                                if eta > 0:
+                                    st.write(f"⏱️ {eta}s remaining")
+                                else:
+                                    st.write(f"⚙️ {status}")
+                    
+                    # Show save button if download is complete
+                    if f'download_{url}' in st.session_state:
+                        download_info = st.session_state[f'download_{url}']
+                        st.success("✅ Download complete!")
                         st.download_button(
-                            "💾 Save",
-                            data=file_content,
-                            file_name=filename,
-                            mime="application/octet-stream"
+                            "💾 Save to Computer",
+                            data=download_info['content'],
+                            file_name=download_info['filename'],
+                            mime="application/octet-stream",
+                            key=f"save_complete_{url}"
                         )
 
 if __name__ == "__main__":
